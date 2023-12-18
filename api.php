@@ -1,6 +1,5 @@
 <?php
 
-// Database class to handle all database operations
 class Database
 {
   private $host = 'localhost';
@@ -9,17 +8,18 @@ class Database
   private $database = 'inventory_manager';
   private $conn;
 
-  public function getConnection()
+  public function __construct()
   {
-    $this->conn = null;
-
     try {
       $this->conn = new PDO("mysql:host=$this->host;dbname=$this->database", $this->db_name, $this->password);
       $this->conn->exec('set names utf8');
     } catch (PDOException $exception) {
-      echo 'Connection error: ' . $exception->getMessage();
+      die('Connection error: ' . $exception->getMessage());
     }
+  }
 
+  public function getConnection()
+  {
     return $this->conn;
   }
 
@@ -27,219 +27,123 @@ class Database
   {
     $this->conn = null;
   }
+}
 
-  public function __destruct()
+class DbOperations
+{
+  private $db;
+
+  public function __construct(Database $database)
   {
-    $this->closeConnection();
+    $this->db = $database;
   }
 
-  public function beginTransaction()
+  public function executeQuery($query, $params = [])
   {
-    $this->conn->beginTransaction();
+    $conn = $this->db->getConnection();
+
+    try {
+      $stmt = $conn->prepare($query);
+      $stmt->execute($params);
+      return $stmt;
+    } catch (PDOException $e) {
+      die('Query error: ' . $e->getMessage());
+    }
+  }
+}
+
+class Entity
+{
+  private $dbOperations;
+  private $tableName;
+
+  public function __construct(DbOperations $dbOperations, $tableName)
+  {
+    $this->dbOperations = $dbOperations;
+    $this->tableName = $tableName;
   }
 
-  public function commit()
+  public function getAll()
   {
-    $this->conn->commit();
+    $query = "SELECT * FROM $this->tableName";
+    $stmt = $this->dbOperations->executeQuery($query);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
   }
 
-  public function rollback()
+  public function getById($id)
   {
-    $this->conn->rollback();
+    $query = "SELECT * FROM $this->tableName WHERE id = :id";
+    $stmt = $this->dbOperations->executeQuery($query, [':id' => $id]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
   }
 
-  public function lastInsertId()
+  public function getByIds($ids)
   {
-    return $this->conn->lastInsertId();
+    $query = "SELECT * FROM $this->tableName WHERE id IN ($ids)";
+    $stmt = $this->dbOperations->executeQuery($query);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
   }
 
-  public function prepare($sql)
+  public function create($data)
   {
-    return $this->conn->prepare($sql);
-  }
-
-  public function exec($sql)
-  {
-    return $this->conn->exec($sql);
-  }
-
-  public function fetchColumn($sql)
-  {
-    return $this->conn->query($sql)->fetchColumn();
-  }
-
-  public function fetchAll($sql)
-  {
-    return $this->conn->query($sql)->fetchAll(PDO::FETCH_ASSOC);
-  }
-
-  public function rowCount($sql)
-  {
-    return $this->conn->query($sql)->rowCount();
-  }
-
-  public function query($sql)
-  {
-    return $this->conn->query($sql);
-  }
-
-  public function bindParam($param, $value)
-  {
-    return $this->conn->bindParam($param, $value);
-  }
-
-  public function fetch()
-  {
-    return $this->conn->fetch();
+    $query = "INSERT INTO $this->tableName (name) VALUES (:name)";
+    $stmt = $this->dbOperations->executeQuery($query, [':name' => $data['name']]);
+    return $stmt->fetch(PDO::FETCH_ASSOC);
   }
 }
 
 /**
  * Class Item
  */
-class Item
+class Item extends Entity
 {
-  private $db;
-
-  /**
-   * Item constructor.
-   * @param PDO $db The database connection object.
-   */
-  public function __construct($db)
+  public function __construct(DbOperations $dbOperations)
   {
-    $this->db = $db;
-  }
-
-  /**
-   * Retrieves all items from the database.
-   * @return array An array of items.
-   */
-  public function get()
-  {
-    $stmt = $this->db->prepare("SELECT * FROM items");
-    $stmt->execute();
-    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    return $items;
-  }
-
-  /**
-   * Retrieves items by ids from the database.
-   * @param string $ids The ids of the items to retrieve.
-   * @return array An array of items.
-   */
-  public function getByIds($ids)
-  {
-    $stmt = $this->db->prepare("SELECT * FROM items WHERE id IN ($ids)");
-    $stmt->execute();
-    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    return $items;
+    parent::__construct($dbOperations, 'items');
   }
 }
 
-class User
+/**
+ * Class User
+ */
+class User extends Entity
 {
-  private $db;
-
-  /**
-   * Item constructor.
-   * @param PDO $db The database connection object.
-   */
-  public function __construct($db)
+  public function __construct(DbOperations $dbOperations)
   {
-    $this->db = $db;
-  }
-
-  /**
-   * Retrieves all items from the database.
-   * @return array An array of items.
-   */
-  public function get()
-  {
-    $stmt = $this->db->prepare("SELECT * FROM users");
-    $stmt->execute();
-    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    return $users;
-  }
-
-  /**
-   * Retrieves items by ids from the database.
-   * @param string $ids The ids of the items to retrieve.
-   * @return array An array of items.
-   */
-  public function getByIds($ids)
-  {
-    $stmt = $this->db->prepare("SELECT * FROM users WHERE usr_id IN ($ids)");
-    $stmt->execute();
-    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    return $users;
+    parent::__construct($dbOperations, 'users');
   }
 }
 
-class ItemType
+/**
+ * Class ItemType
+ */
+class ItemType extends Entity
 {
-  private $db;
-
-  /**
-   * Item constructor.
-   * @param PDO $db The database connection object.
-   */
-  public function __construct($db)
+  public function __construct(DbOperations $dbOperations)
   {
-    $this->db = $db;
-  }
-
-  /**
-   * Retrieves all items from the database.
-   * @return array An array of items.
-   */
-  public function get()
-  {
-    $stmt = $this->db->prepare("SELECT * FROM item_types");
-    $stmt->execute();
-    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    return $users;
-  }
-
-  /**
-   * Retrieves items by ids from the database.
-   * @param string $ids The ids of the items to retrieve.
-   * @return array An array of items.
-   */
-  public function getByIds($ids)
-  {
-    $stmt = $this->db->prepare("SELECT * FROM item_types WHERE id IN ($ids)");
-    $stmt->execute();
-    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    return $users;
+    parent::__construct($dbOperations, 'item_types');
   }
 }
 
-
-class Request
+class Request extends Entity
 {
-  private $db;
+  private $dbOperations;
 
-  /**
-   * Retrieves all items from the database.
-   * @return array An array of items.
-   */
-  public function __construct($db)
+  public function __construct(DbOperations $dbOperations)
   {
-    $this->db = $db;
+    parent::__construct($dbOperations, 'requests');
   }
 
   /**
    * Retrieves all items from the database.
    * @return array An array of items.
    */
-  public function get()
+  public function getRequestList()
   {
-    $stmt = $this->db->prepare("SELECT * FROM requests");
-    $stmt->execute();
-    $requests = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $requests = $this->getAll();
 
     // get the user name for each request
-    $user = new User($this->db);
+    $user = new User($this->dbOperations);
     $users = $user->getByIds(implode(',', array_map(function ($request) {
       return $request['requested_by'];
     }, $requests)));
@@ -277,11 +181,11 @@ class Request
     $itemTypeIds = array_unique(array_merge(...$itemTypeIds));
 
     // the items all have the same item type so we can just get the first item type name
-    $item_type = new ItemType($this->db);
+    $item_type = new ItemType($this->dbOperations);
     // pass the items ids joined by comma to get the item type name
     $item_type_name = $item_type->getByIds(implode(',', $itemTypeIds));
 
-    $itemsDetailed = new Item($this->db);
+    $itemsDetailed = new Item($this->dbOperations);
     // pass the items ids joined by comma to get the item details
     $items = $itemsDetailed->getByIds(implode(',', $itemsIds));
 
@@ -316,32 +220,15 @@ class Request
   }
 
   /**
-   * Retrieves an item by id from the database.
-   * @return object An item object.
-   */
-  public function getById($req_id)
-  {
-    $stmt = $this->db->prepare("SELECT * FROM requests WHERE req_id = :req_id");
-    $stmt->bindParam(':req_id', $req_id);
-    $stmt->execute();
-    $request = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    // return items as json
-    $request['items'] = json_decode($request['items'], true);
-
-    return $request;
-  }
-
-  /**
    * Creates a new request.
    * @param string $user The user who created the request.
    * @param array $items The items in the request.
    */
-  public function create($user, $items)
+  public function createRequest($user, $items)
   {
     try {
       // Step 1: get the items by id to get the item type id
-      $item = new Item($this->db);
+      $item = new Item($this->dbOperations);
       $items = $item->getByIds($items);
       // format the items array to include the item type id
       // format: [{<item1 id>,<item-type1 id>}, {<item2 id>,<item-type1 id>}, {<item3 id>,<item-type2 id>}]
@@ -353,7 +240,7 @@ class Request
       }, $items);
 
       // Step 2: Insert the new request into the 'requests' table
-      $stmt = $this->db->prepare("INSERT INTO requests (requested_by, requested_on, ordered_on, items) VALUES (:requested_by, :requested_on, :ordered_on, :items)");
+      $stmt = $this->dbOperations->prepare("INSERT INTO requests (requested_by, requested_on, ordered_on, items) VALUES (:requested_by, :requested_on, :ordered_on, :items)");
       $today = date('Y-m-d');
       $stmt->bindParam(':requested_by', $user);
       $stmt->bindParam(':requested_on', $today);
@@ -362,7 +249,7 @@ class Request
       $stmt->execute();
     } catch (Exception $e) {
       // Handle any errors and rollback the transaction if an error occurs
-      $this->db->rollback();
+      $this->dbOperations->rollback();
       throw $e;
     }
   }
@@ -375,10 +262,10 @@ class Request
   public function update($req_id, $user, $items)
   {
     // start a transaction
-    $this->db->beginTransaction();
+    $this->dbOperations->beginTransaction();
     try {
       // Step 1: get the items by id to get the item type id
-      $item = new Item($this->db);
+      $item = new Item($this->dbOperations);
       $items = $item->getByIds($items);
       // format the items array to include the item type id
       // format: [{<item1 id>,<item-type1 id>}, {<item2 id>,<item-type1 id>}, {<item3 id>,<item-type2 id>}]
@@ -390,17 +277,17 @@ class Request
       }, $items);
 
       // Step 2: Update the request in the 'requests' table
-      $stmt = $this->db->prepare("UPDATE requests SET requested_by = :requested_by, items = :items WHERE req_id = :req_id");
+      $stmt = $this->dbOperations->prepare("UPDATE requests SET requested_by = :requested_by, items = :items WHERE req_id = :req_id");
       $stmt->bindParam(':requested_by', $user);
       $stmt->bindParam(':items', json_encode($items));
       $stmt->bindParam(':req_id', $req_id);
       if ($stmt->execute()) {
         // commit the transaction
-        $this->db->commit();
+        $this->dbOperations->commit();
       }
     } catch (Exception $e) {
       // Handle any errors and rollback the transaction if an error occurs
-      $this->db->rollback();
+      $this->dbOperations->rollback();
       throw $e;
     }
   }
@@ -412,18 +299,18 @@ class Request
   public function delete($req_id)
   {
     // start a transaction
-    $this->db->beginTransaction();
+    $this->dbOperations->beginTransaction();
     try {
       // Step 1: Delete the request from the 'requests' table
-      $stmt = $this->db->prepare("DELETE FROM requests WHERE req_id = :req_id");
+      $stmt = $this->dbOperations->prepare("DELETE FROM requests WHERE req_id = :req_id");
       $stmt->bindParam(':req_id', $req_id);
       if ($stmt->execute()) {
         // commit the transaction
-        $this->db->commit();
+        $this->dbOperations->commit();
       }
     } catch (Exception $e) {
       // Handle any errors and rollback the transaction if an error occurs
-      $this->db->rollback();
+      $this->dbOperations->rollback();
       throw $e;
     }
   }
@@ -431,7 +318,7 @@ class Request
   public function getItemsByUserAndDate($requested_by, $ordered_on)
   {
     try {
-      $stmt = $this->db->prepare("SELECT * FROM requests WHERE ordered_on = :ordered_on AND requested_by = :requested_by");
+      $stmt = $this->dbOperations->prepare("SELECT * FROM requests WHERE ordered_on = :ordered_on AND requested_by = :requested_by");
       $stmt->bindParam(':ordered_on', $ordered_on);
       $stmt->bindParam(':requested_by', $requested_by);
       $stmt->execute();
@@ -444,23 +331,19 @@ class Request
       return $items;
     } catch (Exception $e) {
       // Handle any errors and rollback the transaction if an error occurs
-      $this->db->rollback();
+      $this->dbOperations->rollback();
       throw $e;
     }
   }
 }
 
-class Summary
+class Summary extends Entity
 {
-  private $db;
+  private $dbOperations;
 
-  /**
-   * Retrieves all items from the database.
-   * @return array An array of items.
-   */
-  public function __construct($db)
+  public function __construct(DbOperations $dbOperations)
   {
-    $this->db = $db;
+    parent::__construct($dbOperations, 'requests');
   }
 
   /**
@@ -471,7 +354,7 @@ class Summary
   {
     try {
       // Step 1: get the items by ordered_on and user
-      $request = new Request($this->db);
+      $request = new Request($this->dbOperations);
       $items = $request->getItemsByUserAndDate($requested_by, $ordered_on);
 
       $items = array_map(function ($item) {
@@ -491,43 +374,41 @@ class Summary
       }
 
       // start a transaction
-      $this->db->beginTransaction();
+      $this->dbOperations->beginTransaction();
       // update or create the summary for the given user and date
-      $stmt = $this->db->prepare("SELECT * FROM summary WHERE ordered_on = :ordered_on AND requested_by = :requested_by");
+      $stmt = $this->dbOperations->prepare("SELECT * FROM summary WHERE ordered_on = :ordered_on AND requested_by = :requested_by");
       $stmt->bindParam(':ordered_on', $ordered_on);
       $stmt->bindParam(':requested_by', $requested_by);
       $stmt->execute();
       $summary = $stmt->fetchAll(PDO::FETCH_ASSOC);
       if ($summary) {
         // update the summary
-        $stmt = $this->db->prepare("UPDATE summary SET items = :items WHERE ordered_on = :ordered_on AND requested_by = :requested_by");
+        $stmt = $this->dbOperations->prepare("UPDATE summary SET items = :items WHERE ordered_on = :ordered_on AND requested_by = :requested_by");
         $stmt->bindParam(':ordered_on', $ordered_on);
         $stmt->bindParam(':items', json_encode($groupedItems));
         $stmt->bindParam(':requested_by', $requested_by);
         if ($stmt->execute()) {
           // commit the transaction
-          $this->db->commit();
+          $this->dbOperations->commit();
         }
       } else {
         // create the summary
-        $stmt = $this->db->prepare("INSERT INTO summary (requested_by, ordered_on, items) VALUES (:requested_by, :ordered_on, :items)");
+        $stmt = $this->dbOperations->prepare("INSERT INTO summary (requested_by, ordered_on, items) VALUES (:requested_by, :ordered_on, :items)");
         $stmt->bindParam(':ordered_on', $ordered_on);
         $stmt->bindParam(':requested_by', $requested_by);
         $stmt->bindParam(':items', json_encode($groupedItems));
         if ($stmt->execute()) {
           // commit the transaction
-          $this->db->commit();
+          $this->dbOperations->commit();
         }
       }
     } catch (Exception $e) {
       // Handle any errors and rollback the transaction if an error occurs
-      $this->db->rollback();
+      $this->dbOperations->rollback();
       throw $e;
     }
   }
 }
-
-
 
 class ResponseHandler
 {
@@ -551,12 +432,12 @@ switch (true) {
     try {
       // create a new instance of the Database class
       $database = new Database();
-      // get the database connection
-      $db = $database->getConnection();
+      // get the database operation class
+      $dbOperations = new DbOperations($database);
       // create a new instance of the User class and pass the database connection as a parameter to the constructor using dependency injection
-      $user = new User($db);
+      $user = new User($dbOperations);
       // call the get method to get all users
-      $result = $user->get();
+      $result = $user->getAll();
       // close the database connection
       $database->closeConnection();
       // return the response
@@ -570,12 +451,12 @@ switch (true) {
     try {
       // create a new instance of the Database class
       $database = new Database();
-      // get the database connection
-      $db = $database->getConnection();
+      // get the database operation class
+      $dbOperations = new DbOperations($database);
       // create a new instance of the Item class and pass the database connection as a parameter to the constructor using dependency injection
-      $item = new Item($db);
+      $item = new Item($dbOperations);
       // call the get method to get all items
-      $result = $item->get();
+      $result = $item->getAll();
       // close the database connection
       $database->closeConnection();
       // return the response
@@ -589,10 +470,10 @@ switch (true) {
     try {
       // create a new instance of the Database class
       $database = new Database();
-      // get the database connection
-      $db = $database->getConnection();
+      // get the database operation class
+      $dbOperations = new DbOperations($database);
       // create a new instance of the Request class and pass the database connection as a parameter to the constructor using dependency injection
-      $request = new Request($db);
+      $request = new Request($dbOperations);
       // call the get method to get the request by id
       $result = $request->getById($_GET['id']);
       // close the database connection
@@ -608,12 +489,12 @@ switch (true) {
     try {
       // create a new instance of the Database class
       $database = new Database();
-      // get the database connection
-      $db = $database->getConnection();
+      // get the database operation class
+      $dbOperations = new DbOperations($database);
       // create a new instance of the Request class and pass the database connection as a parameter to the constructor using dependency injection
-      $request = new Request($db);
+      $request = new Request($dbOperations);
       // call the get method to get all requests
-      $result = $request->get();
+      $result = $request->getAll();
       // close the database connection
       $database->closeConnection();
       // return the response
@@ -627,14 +508,14 @@ switch (true) {
     try {
       // create a new instance of the Database class
       $database = new Database();
-      // get the database connection
-      $db = $database->getConnection();
+      // get the database operation class
+      $dbOperations = new DbOperations($database);
       // create a new instance of the Request class and pass the database connection as a parameter to the constructor using dependency injection
-      $request = new Request($db);
+      $request = new Request($dbOperations);
       // get the user and request items from the request body
       $request->update($_GET['id'], $_POST['user'], $_POST['items']);
       // after update the request we need to update the summary
-      $summary = new Summary($db);
+      $summary = new Summary($dbOperations);
       $summary->update($_POST['user'], date('Y-m-d'));
       // close the database connection
       $database->closeConnection();
@@ -648,16 +529,16 @@ switch (true) {
     try {
       // create a new instance of the Database class
       $database = new Database();
-      // get the database connection
-      $db = $database->getConnection();
+      // get the database operation class
+      $dbOperations = new DbOperations($database);
       // create a new instance of the Request class and pass the database connection as a parameter to the constructor using dependency injection
-      $request = new Request($db);
+      $request = new Request($dbOperations);
       // get the user and request items from the request body
       // we use $_POST to get the request body because we are using the 'application/x-www-form-urlencoded' content type
       // call the create method to create a new request
       $request->create($_POST['user'], $_POST['items']);
       // after create the request we need to update the summary
-      $summary = new Summary($db);
+      $summary = new Summary($dbOperations);
       $summary->update($_POST['user'], date('Y-m-d'));
       // close the database connection
       $database->closeConnection();
@@ -671,14 +552,14 @@ switch (true) {
     try {
       // create a new instance of the Database class
       $database = new Database();
-      // get the database connection
-      $db = $database->getConnection();
+      // get the database operation class
+      $dbOperations = new DbOperations($database);
       // create a new instance of the Request class and pass the database connection as a parameter to the constructor using dependency injection
-      $request = new Request($db);
+      $request = new Request($dbOperations);
       // call the delete method to delete the request
       $request->delete($_GET['id']);
       // after create the request we need to update the summary
-      $summary = new Summary($db);
+      $summary = new Summary($dbOperations);
       $summary->update($_POST['user'], date('Y-m-d'));
       // close the database connection
       $database->closeConnection();
